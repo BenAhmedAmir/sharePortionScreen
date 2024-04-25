@@ -1,0 +1,1 @@
+## desktop application allows you to share a portion of screen using pyQt
