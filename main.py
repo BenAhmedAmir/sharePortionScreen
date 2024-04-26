@@ -1,7 +1,7 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QFrame, QRubberBand, QSizeGrip
-from PyQt5.QtGui import QPixmap, QPainter
-from PyQt5.QtCore import QTimer, QRect, Qt
+from PyQt5.QtWidgets import QApplication, QMainWindow, QFrame, QLabel, QSizeGrip
+from PyQt5.QtGui import QPainter, QPixmap
+from PyQt5.QtCore import QTimer, Qt
 
 class CaptureArea(QFrame):
     def __init__(self):
@@ -30,6 +30,12 @@ class CaptureArea(QFrame):
         self.resize_grip = QSizeGrip(self)
         self.resize_grip.setVisible(True)
 
+        # Add indicator label
+        self.indicator_label = QLabel(self)
+        self.indicator_label.setGeometry(5, 5, 20, 20)
+        self.indicator_label.setStyleSheet("background-color: red; border-radius: 50px;")
+        self.indicator_label.setVisible(False)
+
     def mousePressEvent(self, event):
         if event.buttons() == Qt.LeftButton:
             self.mouse_press_pos = event.pos()
@@ -47,6 +53,7 @@ class CaptureArea(QFrame):
 
     def resizeEvent(self, event):
         self.resize_grip.setGeometry(self.width() - 20, self.height() - 20, 20, 20)
+        self.indicator_label.move(self.width() - 25, self.height() - 25)
 
 class ScreenShareApp(QMainWindow):
     def __init__(self, capture_area):
@@ -62,6 +69,13 @@ class ScreenShareApp(QMainWindow):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
         self.timer.start(100)
+
+        # Connect the resizeEvent of the CaptureArea to the adjust_size method
+        self.capture_area.resizeEvent = self.adjust_size
+
+    def adjust_size(self, event):
+        # Set the size of the ScreenShareApp to be the same as the capture area
+        self.setGeometry(self.capture_area.geometry())
 
     def paintEvent(self, event):
         painter = QPainter(self)
