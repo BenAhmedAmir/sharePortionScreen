@@ -1,41 +1,7 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QRubberBand, QFrame, QSizeGrip
+from PyQt5.QtWidgets import QApplication, QMainWindow, QFrame, QRubberBand, QSizeGrip
 from PyQt5.QtGui import QPixmap, QPainter
-from PyQt5.QtCore import QTimer, QRect, QEvent
-from PyQt5.QtCore import Qt
-
-
-class ResizableWidget(QFrame):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowFlags(self.windowFlags() | Qt.SubWindow)
-        self.rubberBand = QRubberBand(QRubberBand.Rectangle, self)
-        self.drag_start = None
-
-        self.sizeGrip = QSizeGrip(self)
-        self.sizeGrip.setVisible(True)
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.drag_start = event.pos()
-            self.rubberBand.setGeometry(event.pos().x(), event.pos().y(), 0, 0)
-            self.rubberBand.show()
-
-    def mouseMoveEvent(self, event):
-        if self.drag_start:
-            self.rubberBand.setGeometry(QRect(self.drag_start, event.pos()).normalized())
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.drag_start = None
-            self.rubberBand.hide()
-
-
-class CaptureArea(ResizableWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedSize(300, 200)  # Set initial size of the widget
-        self.setStyleSheet("border: 2px solid red;")  # Set border style
-        self.setFrameStyle(QFrame.Box | QFrame.Plain)  # Set frame style
+from PyQt5.QtCore import QTimer, QRect, Qt
 
 class CaptureArea(QFrame):
     def __init__(self):
@@ -46,8 +12,6 @@ class CaptureArea(QFrame):
 
         # Make the widget transparent and without a frame
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
-
-        # Set the widget's background to be translucent
         self.setAttribute(Qt.WA_TranslucentBackground, True)
 
         # Set the border properties directly
@@ -56,16 +20,15 @@ class CaptureArea(QFrame):
         self.setLineWidth(10)
         self.setStyleSheet("border-color: red;")
 
-        # Add resize grip
-        self.resize_grip = ResizableWidget(self)
-        self.resize_grip.setGeometry(self.width() - 20, self.height() - 20, 20, 20)
-        # self.resize_grip.setStyleSheet("background-color: blue;")  # Adjust style as needed
-
         # Install event filter
         self.installEventFilter(self)
 
         self.mouse_press_pos = None
         self.mouse_is_pressed = False
+
+        # Add resize grip
+        self.resize_grip = QSizeGrip(self)
+        self.resize_grip.setVisible(True)
 
     def mousePressEvent(self, event):
         if event.buttons() == Qt.LeftButton:
@@ -84,9 +47,6 @@ class CaptureArea(QFrame):
 
     def resizeEvent(self, event):
         self.resize_grip.setGeometry(self.width() - 20, self.height() - 20, 20, 20)
-
-
-
 
 class ScreenShareApp(QMainWindow):
     def __init__(self, capture_area):
@@ -127,10 +87,7 @@ class ScreenShareApp(QMainWindow):
         # Draw the captured image
         painter.drawPixmap(x, y, screen_capture)
 
-
 if __name__ == "__main__":
-    import sys
-    from PyQt5.QtWidgets import QApplication
     app = QApplication(sys.argv)
 
     capture_area = CaptureArea()
