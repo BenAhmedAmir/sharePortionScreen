@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFrame, QLabel, QSizeGrip
 from PyQt5.QtGui import QPainter, QPixmap
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtCore import QTimer, Qt, QObject, QThread, pyqtSignal
 
 class CaptureArea(QFrame):
     def __init__(self):
@@ -55,6 +55,26 @@ class CaptureArea(QFrame):
         self.resize_grip.setGeometry(self.width() - 20, self.height() - 20, 20, 20)
         self.indicator_label.move(self.width() - 25, self.height() - 25)
 
+class ScreenShareWorker(QObject):
+    signal = pyqtSignal(QPixmap)
+
+    def __init__(self, capture_area):
+        super().__init__()
+        self.capture_area = capture_area
+
+    def run(self):
+        while True:
+            # Capture the screen
+            screen_capture = QApplication.primaryScreen().grabWindow(0,
+                                                                        self.capture_area.geometry().x(),
+                                                                        self.capture_area.geometry().y(),
+                                                                        self.capture_area.geometry().width(),
+                                                                        self.capture_area.geometry().height())
+            # Emit signal with the captured screen
+            self.signal.emit(screen_capture)
+            # Wait for 100ms before capturing again
+            QThread.msleep(100)
+
 class ScreenShareApp(QMainWindow):
     def __init__(self, capture_area):
         super().__init__()
@@ -65,41 +85,24 @@ class ScreenShareApp(QMainWindow):
         # Set the size of the window to be the same as the capture area
         self.setGeometry(self.capture_area.geometry())
 
-        # Set up a timer to capture the screen every 100ms
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update)
-        self.timer.start(100)
+        # Create a thread for capturing the screen
+        self.thread = QThread()
+        self.worker = ScreenShareWorker(capture_area)
+        self.worker.moveToThread(self.thread)
+        self.thread.started.connect(self.worker.run)
+        self.worker.signal.connect(self.update_pixmap)
+        self.thread.start()
 
-        # Connect the resizeEvent of the CaptureArea to the adjust_size method
-        self.capture_area.resizeEvent = self.adjust_size
-
-    def adjust_size(self, event):
-        # Set the size of the ScreenShareApp to be the same as the capture area
-        self.setGeometry(self.capture_area.geometry())
+    def update_pixmap(self, pixmap):
+        # Update the captured pixmap
+        self.pixmap = pixmap
+        self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
-
-        # Capture the screen
-        screen_capture = QApplication.primaryScreen().grabWindow(0,
-                                                                 self.capture_area.geometry().x(),
-                                                                 self.capture_area.geometry().y(),
-                                                                 self.capture_area.geometry().width(),
-                                                                 self.capture_area.geometry().height())
-
-        # Calculate the scale factor for the captured image
-        scale_factor = min(self.width() / screen_capture.width(), self.height() / screen_capture.height())
-
-        # Scale the captured image to fit the window
-        screen_capture = screen_capture.scaled(self.width() * scale_factor, self.height() * scale_factor,
-                                               Qt.KeepAspectRatio)
-
-        # Calculate the position to center the captured image in the window
-        x = (self.width() - screen_capture.width()) / 2
-        y = (self.height() - screen_capture.height()) / 2
-
-        # Draw the captured image
-        painter.drawPixmap(x, y, screen_capture)
+        if hasattr(self, 'pixmap'):
+            # Draw the captured pixmap
+            painter.drawPixmap(self.rect(), self.pixmap)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
