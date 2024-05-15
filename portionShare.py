@@ -1,7 +1,9 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QFrame, QLabel, QSizeGrip
+import time
+
+from PyQt5.QtWidgets import QApplication, QMainWindow, QFrame, QLabel, QSizeGrip, QWidget, QVBoxLayout
 from PyQt5.QtGui import QPainter, QPixmap
-from PyQt5.QtCore import QTimer, Qt, QRect, pyqtSignal, QEvent
+from PyQt5.QtCore import QTimer, Qt, QRect, pyqtSignal, QEvent, QThread
 
 
 class CaptureArea(QFrame):
@@ -76,6 +78,43 @@ class CaptureArea(QFrame):
         return super().eventFilter(obj, event)
 
 
+class ScreenWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.screen_label = QLabel(self)
+        layout = QVBoxLayout()
+        layout.addWidget(self.screen_label)
+        self.setLayout(layout)
+
+    def update_screen(self, screen_capture):
+        self.screen_label.setPixmap(screen_capture)
+
+class ScreenCaptureThread(QThread):
+    screenCaptured = pyqtSignal(QPixmap)
+
+    def __init__(self, capture_area):
+        super().__init__()
+        self.capture_area = capture_area
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+
+    def run(self):
+        while not self.stopped:
+            try:
+                screen_capture = QApplication.primaryScreen().grabWindow(
+                    0,
+                    self.capture_area.geometry().x(),
+                    self.capture_area.geometry().y(),
+                    self.capture_area.geometry().width(),
+                    self.capture_area.geometry().height()
+                )
+                self.screenCaptured.emit(screen_capture)
+                time.sleep(0.1)  # Adjust capture frequency as needed
+            except Exception as e:
+                print("Error during screen capturing:", e)
+
 class ScreenShareApp(QMainWindow):
     def __init__(self, capture_area):
         super().__init__()
@@ -89,10 +128,16 @@ class ScreenShareApp(QMainWindow):
         # Hide window buttons (close, minimize, maximize)
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowTitleHint)
 
-        # Set up a timer to capture the screen every 100ms
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update)
-        self.timer.start(100)
+        # Make the window transparent to mouse events
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+
+        # Create a screen widget to display the captured screen
+        self.screen_widget = ScreenWidget(self)
+
+        # Create and start the screen capture thread
+        self.capture_thread = ScreenCaptureThread(self.capture_area)
+        self.capture_thread.screenCaptured.connect(self.update_screen)
+        self.capture_thread.start()
 
         # Connect the resizeEvent of the CaptureArea to the adjust_size method
         self.capture_area.sizeChanged.connect(self.adjust_size)
@@ -100,34 +145,11 @@ class ScreenShareApp(QMainWindow):
     def adjust_size(self, geometry):
         # Set the size of the ScreenShareApp to be the same as the capture area
         self.setGeometry(geometry)
+        # Adjust the size of the screen widget
+        self.screen_widget.setGeometry(0, 0, self.width(), self.height())
 
-    def paintEvent(self, event):
-        painter = QPainter(self)
-
-        # Capture the screen
-        screen_capture = QApplication.primaryScreen().grabWindow(0,
-                                                                 self.capture_area.geometry().x(),
-                                                                 self.capture_area.geometry().y(),
-                                                                 self.capture_area.geometry().width(),
-                                                                 self.capture_area.geometry().height())
-
-        # Calculate the scale factors for width and height
-        scale_factor_width = self.width() / screen_capture.width()
-        scale_factor_height = self.height() / screen_capture.height()
-
-        # Choose the minimum scale factor to ensure the entire screen fits within the window
-        scale_factor = min(scale_factor_width, scale_factor_height)
-
-        # Calculate the scaled dimensions of the captured screen
-        scaled_width = int(screen_capture.width() * scale_factor)
-        scaled_height = int(screen_capture.height() * scale_factor)
-
-        # Calculate the position to center the scaled captured screen in the window
-        x = (self.width() - scaled_width) // 2
-        y = (self.height() - scaled_height) // 2
-
-        # Draw the scaled captured screen
-        painter.drawPixmap(x, y, scaled_width, scaled_height, screen_capture)
+    def update_screen(self, screen_capture):
+        self.screen_widget.update_screen(screen_capture)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -148,6 +170,10 @@ class ScreenShareApp(QMainWindow):
             else:
                 self.showNormal()
                 self.capture_area.show()
+
+    def closeEvent(self, event):
+        self.capture_thread.stop()
+        self.capture_thread.wait()
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
